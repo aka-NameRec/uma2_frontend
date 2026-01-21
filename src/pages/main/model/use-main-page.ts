@@ -2,6 +2,7 @@ import { useQueryState } from './use-query-state';
 import { useSchemaExplorerIntegration } from './use-schema-explorer-state';
 import { queryExecutor } from '../../../entities/query/model/query-executor';
 import { queryConverter } from '../../../entities/query/model/query-converter';
+import { formatJsonText, formatSqlText } from '../../../shared/lib/formatters/formatters';
 import type { QueryState } from './use-query-state';
 
 export function MainModel() {
@@ -16,7 +17,7 @@ export function MainModel() {
       
       // Convert SQL to JSQL
       const jsql = await queryConverter.sqlToJsql(queryState.sqlQuery.value, queryState.dialect.value);
-      queryState.setJsqlQuery(jsql);
+      queryState.setJsqlText(formatJsonText(JSON.stringify(jsql)));
       
       // Execute JSQL
       const result = await queryExecutor.executeJsql(
@@ -38,16 +39,17 @@ export function MainModel() {
     
     try {
       queryState.setExecuting(true);
+      const jsql = parseJsqlOrThrow();
       
       // Optionally get SQL for debug
-      const { sql } = await queryConverter.jsqlToSql(queryState.jsqlQuery.value!, queryState.dialect.value);
+      const { sql } = await queryConverter.jsqlToSql(jsql, queryState.dialect.value);
       queryState.setGeneratedSql(sql);
       queryState.setSqlQuery(sql);
       
       // Execute JSQL
       const result = await queryExecutor.executeJsql(
-        queryState.jsqlQuery.value!,
-        (queryState.jsqlQuery.value as { params?: Record<string, unknown> | unknown[] }).params ?? null
+        jsql,
+        (jsql as { params?: Record<string, unknown> | unknown[] }).params ?? null
       );
       queryState.setQueryResults(result);
       queryState.setExecutionTime(Math.round(performance.now() - startTime));
@@ -63,7 +65,7 @@ export function MainModel() {
     try {
       queryState.setExecuting(true);
       const jsql = await queryConverter.sqlToJsql(queryState.sqlQuery.value, queryState.dialect.value);
-      queryState.setJsqlQuery(jsql);
+      queryState.setJsqlText(formatJsonText(JSON.stringify(jsql)));
     } catch (error) {
       console.error('Failed to convert SQL to JSQL:', error);
       throw error;
@@ -75,7 +77,8 @@ export function MainModel() {
   async function handleConvertJsqlToSql() {
     try {
       queryState.setExecuting(true);
-      const { sql } = await queryConverter.jsqlToSql(queryState.jsqlQuery.value!, queryState.dialect.value);
+      const jsql = parseJsqlOrThrow();
+      const { sql } = await queryConverter.jsqlToSql(jsql, queryState.dialect.value);
       queryState.setGeneratedSql(sql);
       queryState.setSqlQuery(sql);
     } catch (error) {
@@ -91,17 +94,33 @@ export function MainModel() {
   }
   
   function handleClearJsql() {
-    queryState.setJsqlQuery(null);
+    queryState.setJsqlText('');
   }
 
-  function handleFormatJsql() {
-    if (!queryState.jsqlQuery.value) {
+  function handleFormatSql() {
+    if (!queryState.sqlQuery.value.trim()) {
       return;
     }
 
-    // Normalize to a fresh object so the formatted JSON renders deterministically.
-    const normalized = JSON.parse(JSON.stringify(queryState.jsqlQuery.value));
-    queryState.setJsqlQuery(normalized);
+    try {
+      queryState.setSqlQuery(formatSqlText(queryState.sqlQuery.value, queryState.dialect.value));
+    } catch (error) {
+      console.error('Failed to format SQL:', error);
+      throw error;
+    }
+  }
+
+  function handleFormatJsql() {
+    if (!queryState.jsqlText.value.trim()) {
+      return;
+    }
+
+    try {
+      queryState.setJsqlText(formatJsonText(queryState.jsqlText.value));
+    } catch (error) {
+      console.error('Failed to format JSQL:', error);
+      throw error;
+    }
   }
   
   function handleCopySql() {
@@ -109,7 +128,7 @@ export function MainModel() {
   }
   
   function handleCopyJsql() {
-    navigator.clipboard.writeText(JSON.stringify(queryState.jsqlQuery.value, null, 2));
+    navigator.clipboard.writeText(queryState.jsqlText.value);
   }
   
   function handleExportResults() {
@@ -125,6 +144,23 @@ export function MainModel() {
     // TODO: Show SQL in dialog
     console.log('Generated SQL:', queryState.generatedSql.value);
   }
+
+  function parseJsqlOrThrow(): Record<string, unknown> {
+    if (!queryState.jsqlText.value.trim()) {
+      throw new Error('JSQL query is empty.');
+    }
+
+    try {
+      const parsed = JSON.parse(queryState.jsqlText.value);
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        throw new Error('JSQL must be a JSON object.');
+      }
+      return parsed as Record<string, unknown>;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      throw new Error(`Invalid JSQL JSON: ${message}`);
+    }
+  }
   
   return {
     ...queryState,
@@ -136,6 +172,7 @@ export function MainModel() {
     handleConvertJsqlToSql,
     handleClearSql,
     handleClearJsql,
+    handleFormatSql,
     handleFormatJsql,
     handleCopySql,
     handleCopyJsql,

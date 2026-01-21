@@ -1,20 +1,39 @@
 <script setup lang="ts">
+import { computed } from 'vue';
+import { AgGridVue } from 'ag-grid-vue3';
+import type { ColDef, ValueGetterParams } from 'ag-grid-community';
 import { MainModel } from '../model/use-main-page';
 import SplitPane from '../../../shared/ui/split-pane/SplitPane.vue';
+import CodeEditor from '../../../shared/ui/code-editor/CodeEditor.vue';
 
 const model = MainModel();
 
-function formatCellValue(
-  row: Record<string, unknown> | unknown[],
-  col: { name: string; qualified_name: string },
-  colIndex: number
-) {
-  const rawValue = Array.isArray(row)
-    ? row[colIndex]
-    : row[col.name] ?? row[col.qualified_name];
+const columnDefs = computed<ColDef[]>(() => {
+  const meta = model.queryResults.value?.meta ?? [];
+  return meta.map((col, index) => ({
+    headerName: col.name,
+    field: col.name,
+    resizable: true,
+    sortable: true,
+    valueGetter: (params: ValueGetterParams) => {
+      const data = params.data as Record<string, unknown> | unknown[] | null | undefined;
+      if (!data) {
+        return '';
+      }
+      const rawValue = Array.isArray(data)
+        ? data[index]
+        : data[col.name] ?? data[col.qualified_name];
+      return rawValue ?? '';
+    },
+  }));
+});
 
-  return rawValue !== null && rawValue !== undefined ? String(rawValue) : '-';
-}
+const rowData = computed(() => model.queryResults.value?.data ?? []);
+
+const defaultColDef: ColDef = {
+  resizable: true,
+  sortable: true,
+};
 </script>
 
 <template>
@@ -78,7 +97,7 @@ function formatCellValue(
           :handle-size="8"
         >
           <template #start>
-            <div class="h-full p-4">
+            <div class="h-full p-4 min-h-0 overflow-hidden">
               <SplitPane
                 class="h-full"
                 direction="horizontal"
@@ -89,7 +108,7 @@ function formatCellValue(
                 :handle-size="8"
               >
                 <template #start>
-                  <div class="editor-container h-full flex flex-col rounded-lg border bg-white dark:bg-gray-900">
+                  <div class="editor-container h-full min-h-0 overflow-hidden flex flex-col rounded-lg border bg-white dark:bg-gray-900">
                     <div class="toolbar flex items-center gap-2 px-3 py-2 border-b bg-gray-50 dark:bg-gray-800">
                       <button
                         :disabled="!model.sqlEditorValid.value || model.isExecuting.value"
@@ -105,6 +124,13 @@ function formatCellValue(
                       >
                         Convert
                       </button>
+                      <button
+                        :disabled="!model.sqlEditorValid.value"
+                        class="btn btn-secondary"
+                        @click="model.handleFormatSql"
+                      >
+                        Format
+                      </button>
                       <div class="flex-1" />
                       <button
                         class="btn btn-ghost"
@@ -119,18 +145,19 @@ function formatCellValue(
                         Clear
                       </button>
                     </div>
-                    <div class="editor-content flex-1 p-3">
-                      <textarea
+                    <div class="editor-content flex-1 min-h-0 overflow-hidden p-3">
+                      <CodeEditor
+                        class="h-full"
                         v-model="model.sqlQuery.value"
-                        class="w-full h-full p-2 font-mono text-sm border rounded resize-none"
-                        placeholder="Enter SQL query..."
-                        @keydown.ctrl.enter="model.handleRunSql"
+                        language="sql"
+                        :dialect="model.dialect.value"
+                        @run="model.handleRunSql"
                       />
                     </div>
                   </div>
                 </template>
                 <template #end>
-                  <div class="editor-container h-full flex flex-col rounded-lg border bg-white dark:bg-gray-900">
+                  <div class="editor-container h-full min-h-0 overflow-hidden flex flex-col rounded-lg border bg-white dark:bg-gray-900">
                     <div class="toolbar flex items-center gap-2 px-3 py-2 border-b bg-gray-50 dark:bg-gray-800">
                       <button
                         :disabled="!model.jsqlEditorValid.value || model.isExecuting.value"
@@ -167,13 +194,12 @@ function formatCellValue(
                         Clear
                       </button>
                     </div>
-                    <div class="editor-content flex-1 p-3">
-                      <textarea
-                        :value="model.jsqlQuery?.value ? JSON.stringify(model.jsqlQuery.value, null, 2) : ''"
-                        class="w-full h-full p-2 font-mono text-sm border rounded resize-none"
-                        placeholder="Enter JSQL query as JSON..."
-                        @input="model.setJsqlQuery($event.target.value ? JSON.parse($event.target.value) : null)"
-                        @keydown.ctrl.enter="model.handleRunJsql"
+                    <div class="editor-content flex-1 min-h-0 overflow-hidden p-3">
+                      <CodeEditor
+                        class="h-full"
+                        v-model="model.jsqlText.value"
+                        language="json"
+                        @run="model.handleRunJsql"
                       />
                     </div>
                   </div>
@@ -182,7 +208,7 @@ function formatCellValue(
             </div>
           </template>
           <template #end>
-            <div class="results-section h-full flex flex-col">
+            <div class="results-section h-full min-h-0 flex flex-col">
               <div class="results-header p-4 border-b bg-gray-50 dark:bg-gray-800">
                 <div class="flex items-center justify-between">
                   <div class="flex items-center gap-4">
@@ -238,7 +264,7 @@ function formatCellValue(
                 </div>
               </div>
               
-              <div class="results-content flex-1 overflow-auto bg-white dark:bg-gray-900">
+              <div class="results-content flex-1 min-h-0 overflow-hidden bg-white dark:bg-gray-900">
                 <div
                   v-if="model.isExecuting.value"
                   class="flex items-center justify-center h-full"
@@ -259,39 +285,16 @@ function formatCellValue(
                     </p>
                   </div>
                 </div>
-                
-                <div
-                  v-else
-                  class="results-table-container h-full"
-                >
-                  <table class="results-table w-full border-collapse">
-                    <thead>
-                      <tr class="bg-gray-50 dark:bg-gray-800">
-                        <th
-                          v-for="(col, colIndex) in model.queryResults.value.meta"
-                          :key="col.name"
-                          class="border px-4 py-2 text-left text-sm font-semibold text-gray-700 dark:text-gray-300"
-                        >
-                          {{ col.name }}
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      <tr
-                        v-for="(row, rowIndex) in model.queryResults.value.data"
-                        :key="rowIndex"
-                        class="border-b hover:bg-gray-50 dark:hover:bg-gray-800"
-                      >
-                        <td
-                          v-for="(col, colIndex) in model.queryResults.value.meta"
-                          :key="col.name"
-                          class="border px-4 py-2 text-sm"
-                        >
-                          {{ formatCellValue(row, col, colIndex) }}
-                        </td>
-                      </tr>
-                    </tbody>
-                  </table>
+
+                <div v-else class="results-grid h-full min-h-0">
+                  <AgGridVue
+                    class="ag-theme-quartz h-full"
+                    :columnDefs="columnDefs"
+                    :rowData="rowData"
+                    :defaultColDef="defaultColDef"
+                    :headerHeight="32"
+                    :rowHeight="28"
+                  />
                 </div>
               </div>
             </div>
@@ -448,6 +451,18 @@ function formatCellValue(
 .tabs button.active {
   background: rgb(59, 130, 246);
   color: white;
+}
+
+:deep(.ag-theme-quartz) {
+  --ag-background-color: transparent;
+  --ag-foreground-color: rgb(243, 244, 246);
+  --ag-header-foreground-color: rgb(243, 244, 246);
+  --ag-header-background-color: rgb(31, 41, 55);
+  --ag-odd-row-background-color: rgb(15, 23, 42);
+  --ag-row-border-color: rgb(51, 65, 85);
+  --ag-border-color: rgb(51, 65, 85);
+  --ag-header-column-separator-color: rgb(51, 65, 85);
+  --ag-font-size: 14px;
 }
 
 .btn {

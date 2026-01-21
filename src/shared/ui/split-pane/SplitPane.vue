@@ -142,6 +142,8 @@ onBeforeUnmount(() => {
 <style scoped>
 .split-pane {
   display: grid;
+  min-height: 0;
+  min-width: 0;
 }
 
 .split-pane-handle {
@@ -159,5 +161,12 @@ onBeforeUnmount(() => {
 
 .handle-vertical {
   cursor: row-resize;
+}
+
+.split-pane-start,
+.split-pane-end {
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
 }
 </style>

@@ -4,7 +4,7 @@ import type { SelectResponse } from '../../../shared/api/uma/types';
 
 export function useQueryState() {
   const sqlQuery = useLocalStorage('uma-sql-query', '');
-  const jsqlQuery = useLocalStorage('uma-jsql-query', null as Record<string, unknown> | null);
+  const jsqlText = useLocalStorage('uma-jsql-query', '');
   const dialect = useLocalStorage('uma-dialect', 'generic');
   const queryResults = ref<SelectResponse | null>(null);
   const executionTime = ref<number>(0);
@@ -23,16 +23,20 @@ export function useQueryState() {
   if (activeTab.value !== 'sqlJsql' && activeTab.value !== 'schema') {
     activeTab.value = 'sqlJsql';
   }
+
+  if (typeof jsqlText.value !== 'string') {
+    jsqlText.value = JSON.stringify(jsqlText.value, null, 2);
+  }
   
   const sqlEditorValid = computed(() => sqlQuery.value.trim().length > 0);
-  const jsqlEditorValid = computed(() => jsqlQuery.value !== null);
+  const jsqlEditorValid = computed(() => jsqlText.value.trim().length > 0);
   
   function setSqlQuery(sql: string) {
     sqlQuery.value = sql;
   }
   
-  function setJsqlQuery(jsql: Record<string, unknown> | null) {
-    jsqlQuery.value = jsql;
+  function setJsqlText(text: string) {
+    jsqlText.value = text;
   }
   
   function setQueryResults(results: SelectResponse | null) {
@@ -63,14 +67,14 @@ export function useQueryState() {
   
   function clearAll() {
     sqlQuery.value = '';
-    jsqlQuery.value = null;
+    jsqlText.value = '';
     clearResults();
   }
   
   return {
     // State
     sqlQuery,
-    jsqlQuery,
+    jsqlText,
     dialect,
     queryResults,
     executionTime,
@@ -84,7 +88,7 @@ export function useQueryState() {
     
     // Actions
     setSqlQuery,
-    setJsqlQuery,
+    setJsqlText,
     setQueryResults,
     setExecutionTime,
     setActiveTab,

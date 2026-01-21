@@ -1,27 +1,71 @@
-import { useLocalStorage } from '../../../shared/lib/local-storage/use-local-storage';
-import type { QueryState } from './use-query-state';
+import { onMounted, ref, watch } from 'vue';
+import { umaClient } from '../../../shared/api/uma/client';
+import type {
+  EntityDetailsResponse,
+  EntityListResponse,
+} from '../../../shared/api/uma/types';
 
-export function useSchemaExplorerIntegration(queryState: QueryState & ReturnType<typeof useQueryState>) {
-  const showSchemaExplorer = useLocalStorage('uma-show-schema-explorer', true);
-  
-  function handleInsertColumn(table: string, column: string) {
-    const text = column ? `${table}.${column}` : table;
-    
-    if (queryState.activeTab.value === 'sql') {
-      queryState.setSqlQuery(queryState.sqlQuery.value + ` ${text}`);
-    } else {
-      // TODO: Implement JSQL column insertion logic
-      console.warn('JSQL column insertion not implemented yet');
+export function useSchemaExplorerIntegration() {
+  const entities = ref<string[]>([]);
+  const selectedEntity = ref<string | null>(null);
+  const entityDetails = ref<EntityDetailsResponse | null>(null);
+  const isLoadingEntities = ref<boolean>(false);
+  const isLoadingEntityDetails = ref<boolean>(false);
+
+  async function loadEntities() {
+    try {
+      isLoadingEntities.value = true;
+      const response = await umaClient.post<EntityListResponse>('/uma/meta/entity_list', {});
+      entities.value = response.entities;
+      if (!selectedEntity.value && response.entities.length > 0) {
+        selectedEntity.value = response.entities[0];
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      throw new Error(`Failed to load entity list: ${message}`);
+    } finally {
+      isLoadingEntities.value = false;
     }
   }
-  
-  function toggleSchemaExplorer() {
-    showSchemaExplorer.value = !showSchemaExplorer.value;
+
+  async function loadEntityDetails(entityName: string) {
+    try {
+      isLoadingEntityDetails.value = true;
+      entityDetails.value = await umaClient.post<EntityDetailsResponse>(
+        '/uma/meta/entity_details',
+        { entity_name: entityName }
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      throw new Error(`Failed to load entity details: ${message}`);
+    } finally {
+      isLoadingEntityDetails.value = false;
+    }
   }
-  
+
+  function handleSelectEntity(entityName: string) {
+    selectedEntity.value = entityName;
+  }
+
+  watch(selectedEntity, async (entityName) => {
+    if (!entityName) {
+      entityDetails.value = null;
+      return;
+    }
+
+    await loadEntityDetails(entityName);
+  });
+
+  onMounted(() => {
+    void loadEntities();
+  });
+
   return {
-    showSchemaExplorer,
-    handleInsertColumn,
-    toggleSchemaExplorer,
+    entities,
+    selectedEntity,
+    entityDetails,
+    isLoadingEntities,
+    isLoadingEntityDetails,
+    handleSelectEntity,
   };
 }

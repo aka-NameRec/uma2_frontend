@@ -6,7 +6,7 @@ import type { QueryState } from './use-query-state';
 
 export function MainModel() {
   const queryState = useQueryState() as QueryState & ReturnType<typeof useQueryState>;
-  const schemaIntegration = useSchemaExplorerIntegration(queryState);
+  const schemaIntegration = useSchemaExplorerIntegration();
   
   async function handleRunSql() {
     const startTime = performance.now();
@@ -25,7 +25,6 @@ export function MainModel() {
       );
       queryState.setQueryResults(result);
       queryState.setExecutionTime(Math.round(performance.now() - startTime));
-      queryState.setActiveTab('jsql');
     } catch (error) {
       console.error('Failed to execute SQL:', error);
       throw error;
@@ -65,7 +64,6 @@ export function MainModel() {
       queryState.setExecuting(true);
       const jsql = await queryConverter.sqlToJsql(queryState.sqlQuery.value, queryState.dialect.value);
       queryState.setJsqlQuery(jsql);
-      queryState.setActiveTab('jsql');
     } catch (error) {
       console.error('Failed to convert SQL to JSQL:', error);
       throw error;
@@ -80,7 +78,6 @@ export function MainModel() {
       const { sql } = await queryConverter.jsqlToSql(queryState.jsqlQuery.value!, queryState.dialect.value);
       queryState.setGeneratedSql(sql);
       queryState.setSqlQuery(sql);
-      queryState.setActiveTab('sql');
     } catch (error) {
       console.error('Failed to convert JSQL to SQL:', error);
       throw error;

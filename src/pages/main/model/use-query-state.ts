@@ -8,7 +8,7 @@ export function useQueryState() {
   const dialect = useLocalStorage('uma-dialect', 'generic');
   const queryResults = ref<SelectResponse | null>(null);
   const executionTime = ref<number>(0);
-  const activeTab = useLocalStorage('uma-active-tab', 'sql' as 'sql' | 'jsql');
+  const activeTab = useLocalStorage('uma-active-tab', 'sqlJsql' as 'sqlJsql' | 'schema');
   const generatedSql = ref<string | null>(null);
   const isExecuting = ref<boolean>(false);
   
@@ -18,6 +18,10 @@ export function useQueryState() {
   
   if (typeof dialect.value !== 'string') {
     dialect.value = 'generic';
+  }
+
+  if (activeTab.value !== 'sqlJsql' && activeTab.value !== 'schema') {
+    activeTab.value = 'sqlJsql';
   }
   
   const sqlEditorValid = computed(() => sqlQuery.value.trim().length > 0);
@@ -39,7 +43,7 @@ export function useQueryState() {
     executionTime.value = time;
   }
   
-  function setActiveTab(tab: 'sql' | 'jsql') {
+  function setActiveTab(tab: 'sqlJsql' | 'schema') {
     activeTab.value = tab;
   }
   

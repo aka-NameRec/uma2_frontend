@@ -12,6 +12,14 @@ export function useQueryState() {
   const generatedSql = ref<string | null>(null);
   const isExecuting = ref<boolean>(false);
   
+  if (typeof sqlQuery.value !== 'string') {
+    sqlQuery.value = '';
+  }
+  
+  if (typeof dialect.value !== 'string') {
+    dialect.value = 'generic';
+  }
+  
   const sqlEditorValid = computed(() => sqlQuery.value.trim().length > 0);
   const jsqlEditorValid = computed(() => jsqlQuery.value !== null);
   

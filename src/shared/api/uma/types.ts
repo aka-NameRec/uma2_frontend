@@ -1,6 +1,6 @@
 export interface SelectRequest {
   jsql: Record<string, unknown>;
-  params?: Record<string, unknown> | null;
+  params?: Record<string, unknown> | unknown[] | null;
 }
 
 export interface ColumnMeta {

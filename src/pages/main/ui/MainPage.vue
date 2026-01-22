@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import { AgGridVue } from 'ag-grid-vue3';
-import { colorSchemeDark, themeQuartz } from 'ag-grid-community';
 import type { ColDef, IDatasource, IGetRowsParams, ValueGetterParams } from 'ag-grid-community';
 import { MainModel } from '../model/use-main-page';
 import SplitPane from '../../../shared/ui/split-pane/SplitPane.vue';
 import CodeEditor from '../../../shared/ui/code-editor/CodeEditor.vue';
+import SchemaExplorerGrid from '../../../features/schema-explorer/ui/SchemaExplorerGrid.vue';
+import SchemaExplorerFieldsGrid from '../../../features/schema-explorer/ui/SchemaExplorerFieldsGrid.vue';
+import { darkGridTheme } from '../../../shared/ui/ag-grid/theme';
 
 const model = MainModel();
 
@@ -30,16 +32,6 @@ const columnDefs = computed<ColDef[]>(() => {
 });
 
 const hasResults = computed(() => !!model.queryResults.value);
-
-const gridTheme = themeQuartz.withPart(colorSchemeDark).withParams({
-  dataBackgroundColor: 'rgb(15, 23, 42)',
-  oddRowBackgroundColor: 'rgb(2, 6, 23)',
-  headerBackgroundColor: 'rgb(31, 41, 55)',
-  headerTextColor: 'rgb(243, 244, 246)',
-  cellTextColor: 'rgb(243, 244, 246)',
-  borderColor: 'rgb(51, 65, 85)',
-  rowHoverColor: 'rgba(148, 163, 184, 0.15)',
-});
 
 const dataSource = computed<IDatasource>(() => ({
   getRows: async (params: IGetRowsParams) => {
@@ -324,7 +316,7 @@ const defaultColDef: ColDef = {
                     :headerHeight="32"
                     :rowHeight="28"
                     rowModelType="infinite"
-                    :theme="gridTheme"
+                    :theme="darkGridTheme"
                     :datasource="dataSource"
                     :cacheBlockSize="model.queryResultsPageSize.value"
                     :maxBlocksInCache="5"
@@ -358,7 +350,7 @@ const defaultColDef: ColDef = {
                   Tables
                 </h3>
               </div>
-              <div class="flex-1 overflow-auto p-2">
+              <div class="flex-1 min-h-0 overflow-hidden">
                 <div
                   v-if="model.isLoadingEntities.value"
                   class="text-sm text-gray-500"
@@ -371,25 +363,12 @@ const defaultColDef: ColDef = {
                 >
                   No tables available.
                 </div>
-                <ul
+                <SchemaExplorerGrid
                   v-else
-                  class="space-y-1"
-                >
-                  <li
-                    v-for="entity in model.entities.value"
-                    :key="entity"
-                  >
-                    <button
-                      class="w-full text-left px-2 py-1 rounded-md text-sm hover:bg-gray-100 dark:hover:bg-gray-800"
-                      :class="{
-                        'bg-gray-100 dark:bg-gray-800 font-semibold': model.selectedEntity.value === entity
-                      }"
-                      @click="model.handleSelectEntity(entity)"
-                    >
-                      {{ entity }}
-                    </button>
-                  </li>
-                </ul>
+                  :rows="model.entities.value"
+                  :selected="model.selectedEntity.value"
+                  @select="model.handleSelectEntity"
+                />
               </div>
             </div>
           </template>
@@ -400,7 +379,7 @@ const defaultColDef: ColDef = {
                   Fields
                 </h3>
               </div>
-              <div class="flex-1 overflow-auto p-3">
+              <div class="flex-1 min-h-0 overflow-hidden">
                 <div
                   v-if="model.isLoadingEntityDetails.value"
                   class="text-sm text-gray-500"
@@ -419,36 +398,10 @@ const defaultColDef: ColDef = {
                 >
                   No fields found.
                 </div>
-                <div
+                <SchemaExplorerFieldsGrid
                   v-else
-                  class="space-y-2"
-                >
-                  <div
-                    v-for="column in model.entityDetails.value.columns"
-                    :key="column.name"
-                    class="flex items-center justify-between border rounded-md px-3 py-2 text-sm"
-                  >
-                    <div>
-                      <div class="font-medium">
-                        {{ column.name }}
-                      </div>
-                      <div class="text-xs text-gray-500">
-                        {{ column.type }}
-                      </div>
-                    </div>
-                    <div class="text-xs text-gray-500">
-                      <span v-if="column.primary_key">
-                        PK
-                      </span>
-                      <span v-else-if="column.nullable">
-                        Nullable
-                      </span>
-                      <span v-else>
-                        Required
-                      </span>
-                    </div>
-                  </div>
-                </div>
+                  :rows="model.entityDetails.value.columns"
+                />
               </div>
             </div>
           </template>

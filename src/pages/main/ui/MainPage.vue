@@ -1,15 +1,18 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import { AgGridVue } from 'ag-grid-vue3';
-import type { ColDef, ValueGetterParams } from 'ag-grid-community';
+import type { ColDef, IDatasource, IGetRowsParams, ValueGetterParams } from 'ag-grid-community';
 import { MainModel } from '../model/use-main-page';
 import SplitPane from '../../../shared/ui/split-pane/SplitPane.vue';
 import CodeEditor from '../../../shared/ui/code-editor/CodeEditor.vue';
+import SchemaExplorerGrid from '../../../features/schema-explorer/ui/SchemaExplorerGrid.vue';
+import SchemaExplorerFieldsGrid from '../../../features/schema-explorer/ui/SchemaExplorerFieldsGrid.vue';
+import { darkGridTheme } from '../../../shared/ui/ag-grid/theme';
 
 const model = MainModel();
 
 const columnDefs = computed<ColDef[]>(() => {
-  const meta = model.queryResults.value?.meta ?? [];
+  const meta = model.queryResultsMeta.value ?? [];
   return meta.map((col, index) => ({
     headerName: col.name,
     field: col.name,
@@ -28,7 +31,26 @@ const columnDefs = computed<ColDef[]>(() => {
   }));
 });
 
-const rowData = computed(() => model.queryResults.value?.data ?? []);
+const hasResults = computed(() => !!model.queryResults.value);
+
+const dataSource = computed<IDatasource>(() => ({
+  getRows: async (params: IGetRowsParams) => {
+    try {
+      const pageOffset = params.startRow ?? 0;
+      const page = await model.loadResultsPage(pageOffset);
+      if (!page) {
+        params.successCallback([], pageOffset);
+        return;
+      }
+      const lastRow = page.lastRow ?? undefined;
+      params.successCallback(page.rows, lastRow);
+    } catch (error) {
+      console.error('Failed to load grid rows:', error);
+      params.failCallback();
+      throw error;
+    }
+  },
+}));
 
 const defaultColDef: ColDef = {
   resizable: true,
@@ -217,16 +239,16 @@ const defaultColDef: ColDef = {
                     </h3>
                     
                     <div
-                      v-if="model.queryResults?.value"
+                      v-if="hasResults"
                       class="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400"
                     >
                       <span class="flex items-center gap-1">
-                        <span class="font-medium">{{ model.queryResults.value.data.length }}</span>
+                        <span class="font-medium">{{ model.queryResultsRowCount.value }}</span>
                         rows
                       </span>
                       <span>•</span>
                       <span class="flex items-center gap-1">
-                        <span class="font-medium">{{ model.queryResults.value.meta.length }}</span>
+                        <span class="font-medium">{{ model.queryResultsMeta.value.length }}</span>
                         columns
                       </span>
                       <span
@@ -240,21 +262,21 @@ const defaultColDef: ColDef = {
 
                   <div class="toolbar flex items-center gap-2">
                     <button
-                      :disabled="!model.queryResults?.value"
+                      :disabled="!hasResults"
                       class="btn btn-outline"
                       @click="model.handleExportResults"
                     >
                       Export
                     </button>
                     <button
-                      :disabled="!model.queryResults?.value"
+                      :disabled="!hasResults"
                       class="btn btn-outline"
                       @click="model.handleShowSql"
                     >
                       Show SQL
                     </button>
                     <button
-                      :disabled="!model.queryResults?.value"
+                      :disabled="!hasResults"
                       class="btn btn-ghost"
                       @click="model.handleClearResults"
                     >
@@ -273,7 +295,7 @@ const defaultColDef: ColDef = {
                 </div>
                 
                 <div
-                  v-else-if="!model.queryResults?.value"
+                  v-else-if="!hasResults"
                   class="flex items-center justify-center h-full text-gray-500"
                 >
                   <div class="text-center">
@@ -288,12 +310,18 @@ const defaultColDef: ColDef = {
 
                 <div v-else class="results-grid h-full min-h-0">
                   <AgGridVue
-                    class="ag-theme-quartz h-full"
+                    class="h-full"
                     :columnDefs="columnDefs"
-                    :rowData="rowData"
                     :defaultColDef="defaultColDef"
                     :headerHeight="32"
                     :rowHeight="28"
+                    rowModelType="infinite"
+                    :theme="darkGridTheme"
+                    :datasource="dataSource"
+                    :cacheBlockSize="model.queryResultsPageSize.value"
+                    :maxBlocksInCache="5"
+                    :infiniteInitialRowCount="1"
+                    :key="model.queryResultsRequestVersion.value"
                   />
                 </div>
               </div>
@@ -322,7 +350,7 @@ const defaultColDef: ColDef = {
                   Tables
                 </h3>
               </div>
-              <div class="flex-1 overflow-auto p-2">
+              <div class="flex-1 min-h-0 overflow-hidden">
                 <div
                   v-if="model.isLoadingEntities.value"
                   class="text-sm text-gray-500"
@@ -335,25 +363,12 @@ const defaultColDef: ColDef = {
                 >
                   No tables available.
                 </div>
-                <ul
+                <SchemaExplorerGrid
                   v-else
-                  class="space-y-1"
-                >
-                  <li
-                    v-for="entity in model.entities.value"
-                    :key="entity"
-                  >
-                    <button
-                      class="w-full text-left px-2 py-1 rounded-md text-sm hover:bg-gray-100 dark:hover:bg-gray-800"
-                      :class="{
-                        'bg-gray-100 dark:bg-gray-800 font-semibold': model.selectedEntity.value === entity
-                      }"
-                      @click="model.handleSelectEntity(entity)"
-                    >
-                      {{ entity }}
-                    </button>
-                  </li>
-                </ul>
+                  :rows="model.entities.value"
+                  :selected="model.selectedEntity.value"
+                  @select="model.handleSelectEntity"
+                />
               </div>
             </div>
           </template>
@@ -364,7 +379,7 @@ const defaultColDef: ColDef = {
                   Fields
                 </h3>
               </div>
-              <div class="flex-1 overflow-auto p-3">
+              <div class="flex-1 min-h-0 overflow-hidden">
                 <div
                   v-if="model.isLoadingEntityDetails.value"
                   class="text-sm text-gray-500"
@@ -383,36 +398,10 @@ const defaultColDef: ColDef = {
                 >
                   No fields found.
                 </div>
-                <div
+                <SchemaExplorerFieldsGrid
                   v-else
-                  class="space-y-2"
-                >
-                  <div
-                    v-for="column in model.entityDetails.value.columns"
-                    :key="column.name"
-                    class="flex items-center justify-between border rounded-md px-3 py-2 text-sm"
-                  >
-                    <div>
-                      <div class="font-medium">
-                        {{ column.name }}
-                      </div>
-                      <div class="text-xs text-gray-500">
-                        {{ column.type }}
-                      </div>
-                    </div>
-                    <div class="text-xs text-gray-500">
-                      <span v-if="column.primary_key">
-                        PK
-                      </span>
-                      <span v-else-if="column.nullable">
-                        Nullable
-                      </span>
-                      <span v-else>
-                        Required
-                      </span>
-                    </div>
-                  </div>
-                </div>
+                  :rows="model.entityDetails.value.columns"
+                />
               </div>
             </div>
           </template>
@@ -451,18 +440,6 @@ const defaultColDef: ColDef = {
 .tabs button.active {
   background: rgb(59, 130, 246);
   color: white;
-}
-
-:deep(.ag-theme-quartz) {
-  --ag-background-color: transparent;
-  --ag-foreground-color: rgb(243, 244, 246);
-  --ag-header-foreground-color: rgb(243, 244, 246);
-  --ag-header-background-color: rgb(31, 41, 55);
-  --ag-odd-row-background-color: rgb(15, 23, 42);
-  --ag-row-border-color: rgb(51, 65, 85);
-  --ag-border-color: rgb(51, 65, 85);
-  --ag-header-column-separator-color: rgb(51, 65, 85);
-  --ag-font-size: 14px;
 }
 
 .btn {

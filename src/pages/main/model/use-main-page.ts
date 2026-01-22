@@ -1,13 +1,17 @@
+import { ref } from 'vue';
 import { useQueryState } from './use-query-state';
 import { useSchemaExplorerIntegration } from './use-schema-explorer-state';
 import { queryExecutor } from '../../../entities/query/model/query-executor';
 import { queryConverter } from '../../../entities/query/model/query-converter';
 import { formatJsonText, formatSqlText } from '../../../shared/lib/formatters/formatters';
+import { useQueryResults } from '../../../features/query-results/lib/use-query-results';
 import type { QueryState } from './use-query-state';
 
 export function MainModel() {
   const queryState = useQueryState() as QueryState & ReturnType<typeof useQueryState>;
   const schemaIntegration = useSchemaExplorerIntegration();
+  const queryResults = useQueryResults();
+  const queryParams = ref<Record<string, unknown> | unknown[] | null>(null);
   
   async function handleRunSql() {
     const startTime = performance.now();
@@ -20,11 +24,16 @@ export function MainModel() {
       queryState.setJsqlText(formatJsonText(JSON.stringify(jsql)));
       
       // Execute JSQL
-      const result = await queryExecutor.executeJsql(
-        jsql,
-        (jsql as { params?: Record<string, unknown> | unknown[] }).params ?? null
+      const params = (jsql as { params?: Record<string, unknown> | unknown[] }).params ?? null;
+      queryParams.value = params;
+      queryResults.reset(jsql);
+      const page = await queryResults.loadPage(
+        (pagedJsql) => queryExecutor.executeJsql(pagedJsql, queryParams.value),
+        0
       );
-      queryState.setQueryResults(result);
+      if (!page) {
+        throw new Error('Failed to load the first page of query results.');
+      }
       queryState.setExecutionTime(Math.round(performance.now() - startTime));
     } catch (error) {
       console.error('Failed to execute SQL:', error);
@@ -47,11 +56,16 @@ export function MainModel() {
       queryState.setSqlQuery(sql);
       
       // Execute JSQL
-      const result = await queryExecutor.executeJsql(
-        jsql,
-        (jsql as { params?: Record<string, unknown> | unknown[] }).params ?? null
+      const params = (jsql as { params?: Record<string, unknown> | unknown[] }).params ?? null;
+      queryParams.value = params;
+      queryResults.reset(jsql);
+      const page = await queryResults.loadPage(
+        (pagedJsql) => queryExecutor.executeJsql(pagedJsql, queryParams.value),
+        0
       );
-      queryState.setQueryResults(result);
+      if (!page) {
+        throw new Error('Failed to load the first page of query results.');
+      }
       queryState.setExecutionTime(Math.round(performance.now() - startTime));
     } catch (error) {
       console.error('Failed to execute JSQL:', error);
@@ -133,16 +147,25 @@ export function MainModel() {
   
   function handleExportResults() {
     // TODO: Implement export functionality
-    console.log('Export results:', queryState.queryResults.value);
+    console.log('Export results:', queryResults.results.value);
   }
   
   function handleClearResults() {
+    queryResults.clear();
     queryState.clearResults();
+    queryParams.value = null;
   }
   
   function handleShowSql() {
     // TODO: Show SQL in dialog
     console.log('Generated SQL:', queryState.generatedSql.value);
+  }
+
+  async function loadResultsPage(pageOffset: number) {
+    return await queryResults.loadPage(
+      (pagedJsql) => queryExecutor.executeJsql(pagedJsql, queryParams.value),
+      pageOffset
+    );
   }
 
   function parseJsqlOrThrow(): Record<string, unknown> {
@@ -165,6 +188,15 @@ export function MainModel() {
   return {
     ...queryState,
     ...schemaIntegration,
+    queryResults: queryResults.results,
+    queryResultsMeta: queryResults.meta,
+    queryResultsRows: queryResults.rows,
+    queryResultsPageSize: queryResults.pageSize,
+    queryResultsHasMore: queryResults.hasMore,
+    queryResultsIsLoadingPage: queryResults.isLoadingPage,
+    queryResultsRowCount: queryResults.loadedRowCount,
+    queryResultsRequestVersion: queryResults.requestVersion,
+    loadResultsPage,
     // High-level actions
     handleRunSql,
     handleRunJsql,

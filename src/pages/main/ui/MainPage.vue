@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import { AgGridVue } from 'ag-grid-vue3';
-import type { ColDef, ValueGetterParams } from 'ag-grid-community';
+import { colorSchemeDark, themeQuartz } from 'ag-grid-community';
+import type { ColDef, IDatasource, IGetRowsParams, ValueGetterParams } from 'ag-grid-community';
 import { MainModel } from '../model/use-main-page';
 import SplitPane from '../../../shared/ui/split-pane/SplitPane.vue';
 import CodeEditor from '../../../shared/ui/code-editor/CodeEditor.vue';
@@ -9,7 +10,7 @@ import CodeEditor from '../../../shared/ui/code-editor/CodeEditor.vue';
 const model = MainModel();
 
 const columnDefs = computed<ColDef[]>(() => {
-  const meta = model.queryResults.value?.meta ?? [];
+  const meta = model.queryResultsMeta.value ?? [];
   return meta.map((col, index) => ({
     headerName: col.name,
     field: col.name,
@@ -28,7 +29,36 @@ const columnDefs = computed<ColDef[]>(() => {
   }));
 });
 
-const rowData = computed(() => model.queryResults.value?.data ?? []);
+const hasResults = computed(() => !!model.queryResults.value);
+
+const gridTheme = themeQuartz.withPart(colorSchemeDark).withParams({
+  dataBackgroundColor: 'rgb(15, 23, 42)',
+  oddRowBackgroundColor: 'rgb(2, 6, 23)',
+  headerBackgroundColor: 'rgb(31, 41, 55)',
+  headerTextColor: 'rgb(243, 244, 246)',
+  cellTextColor: 'rgb(243, 244, 246)',
+  borderColor: 'rgb(51, 65, 85)',
+  rowHoverColor: 'rgba(148, 163, 184, 0.15)',
+});
+
+const dataSource = computed<IDatasource>(() => ({
+  getRows: async (params: IGetRowsParams) => {
+    try {
+      const pageOffset = params.startRow ?? 0;
+      const page = await model.loadResultsPage(pageOffset);
+      if (!page) {
+        params.successCallback([], pageOffset);
+        return;
+      }
+      const lastRow = page.lastRow ?? undefined;
+      params.successCallback(page.rows, lastRow);
+    } catch (error) {
+      console.error('Failed to load grid rows:', error);
+      params.failCallback();
+      throw error;
+    }
+  },
+}));
 
 const defaultColDef: ColDef = {
   resizable: true,
@@ -217,16 +247,16 @@ const defaultColDef: ColDef = {
                     </h3>
                     
                     <div
-                      v-if="model.queryResults?.value"
+                      v-if="hasResults"
                       class="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400"
                     >
                       <span class="flex items-center gap-1">
-                        <span class="font-medium">{{ model.queryResults.value.data.length }}</span>
+                        <span class="font-medium">{{ model.queryResultsRowCount.value }}</span>
                         rows
                       </span>
                       <span>•</span>
                       <span class="flex items-center gap-1">
-                        <span class="font-medium">{{ model.queryResults.value.meta.length }}</span>
+                        <span class="font-medium">{{ model.queryResultsMeta.value.length }}</span>
                         columns
                       </span>
                       <span
@@ -240,21 +270,21 @@ const defaultColDef: ColDef = {
 
                   <div class="toolbar flex items-center gap-2">
                     <button
-                      :disabled="!model.queryResults?.value"
+                      :disabled="!hasResults"
                       class="btn btn-outline"
                       @click="model.handleExportResults"
                     >
                       Export
                     </button>
                     <button
-                      :disabled="!model.queryResults?.value"
+                      :disabled="!hasResults"
                       class="btn btn-outline"
                       @click="model.handleShowSql"
                     >
                       Show SQL
                     </button>
                     <button
-                      :disabled="!model.queryResults?.value"
+                      :disabled="!hasResults"
                       class="btn btn-ghost"
                       @click="model.handleClearResults"
                     >
@@ -273,7 +303,7 @@ const defaultColDef: ColDef = {
                 </div>
                 
                 <div
-                  v-else-if="!model.queryResults?.value"
+                  v-else-if="!hasResults"
                   class="flex items-center justify-center h-full text-gray-500"
                 >
                   <div class="text-center">
@@ -288,12 +318,18 @@ const defaultColDef: ColDef = {
 
                 <div v-else class="results-grid h-full min-h-0">
                   <AgGridVue
-                    class="ag-theme-quartz h-full"
+                    class="h-full"
                     :columnDefs="columnDefs"
-                    :rowData="rowData"
                     :defaultColDef="defaultColDef"
                     :headerHeight="32"
                     :rowHeight="28"
+                    rowModelType="infinite"
+                    :theme="gridTheme"
+                    :datasource="dataSource"
+                    :cacheBlockSize="model.queryResultsPageSize.value"
+                    :maxBlocksInCache="5"
+                    :infiniteInitialRowCount="1"
+                    :key="model.queryResultsRequestVersion.value"
                   />
                 </div>
               </div>
@@ -451,18 +487,6 @@ const defaultColDef: ColDef = {
 .tabs button.active {
   background: rgb(59, 130, 246);
   color: white;
-}
-
-:deep(.ag-theme-quartz) {
-  --ag-background-color: transparent;
-  --ag-foreground-color: rgb(243, 244, 246);
-  --ag-header-foreground-color: rgb(243, 244, 246);
-  --ag-header-background-color: rgb(31, 41, 55);
-  --ag-odd-row-background-color: rgb(15, 23, 42);
-  --ag-row-border-color: rgb(51, 65, 85);
-  --ag-border-color: rgb(51, 65, 85);
-  --ag-header-column-separator-color: rgb(51, 65, 85);
-  --ag-font-size: 14px;
 }
 
 .btn {
